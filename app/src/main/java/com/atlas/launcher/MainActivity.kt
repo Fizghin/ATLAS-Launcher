@@ -14,6 +14,8 @@ import kotlin.math.*
 
 class MainActivity : Activity() {
     private lateinit var map: PirateMap
+    private lateinit var world: Atlas3DView
+    private var in3D = true
     private val prefs by lazy { getSharedPreferences("atlas", MODE_PRIVATE) }
     private val parchment = Color.rgb(235, 214, 168)
     private val ink = Color.rgb(60, 42, 27)
@@ -33,11 +35,17 @@ class MainActivity : Activity() {
         window.navigationBarColor = parchment
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         map = PirateMap()
-        setContentView(map)
+        world = Atlas3DView(this) { index ->
+            in3D = false
+            setContentView(map)
+            map.openDistrict(index)
+        }
+        show3D()
+        checkUpdates(false)
         if (prefs.getBoolean("music", false)) startMusic()
     }
-    override fun onPause() { super.onPause(); audio?.stop(); audio = null }
-    override fun onResume() { super.onResume(); if (prefs.getBoolean("music", false)) startMusic() }
+    override fun onPause() { super.onPause(); if(in3D) world.onPause(); audio?.stop(); audio = null }
+    override fun onResume() { super.onResume(); if(::world.isInitialized && in3D) world.onResume(); if (prefs.getBoolean("music", false)) startMusic() }
     override fun onDestroy() { audio?.stop(); audio = null; super.onDestroy() }
     private fun startMusic() { if (audio == null) audio = SeaAudio().also { it.start() } }
     private fun toggleMusic() {
@@ -85,7 +93,78 @@ class MainActivity : Activity() {
             }.setNegativeButton("CANCEL", null).show()
     }
     @Deprecated("Deprecated in Java")
-    override fun onBackPressed() { if (map.selected >= 0) map.goBack() else super.onBackPressed() }
+    override fun onBackPressed() { if(!in3D) show3D() else super.onBackPressed() }
+
+    private fun show3D() {
+        in3D = true
+        val shell = android.widget.FrameLayout(this)
+        (world.parent as? android.view.ViewGroup)?.removeView(world)
+        shell.addView(world)
+        val header = android.widget.TextView(this).apply {
+            text = "A T L A S    ✦    THE LIVING ARCHIPELAGO"
+            textSize = 18f
+            setTextColor(android.graphics.Color.rgb(245,222,175))
+            setBackgroundColor(0xBB203E46.toInt())
+            gravity = android.view.Gravity.CENTER
+            setPadding(8,24,8,24)
+        }
+        shell.addView(header, android.widget.FrameLayout.LayoutParams(-1,-2,android.view.Gravity.TOP))
+        val bottom = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            setBackgroundColor(0xDD203E46.toInt())
+        }
+        val labels = arrayOf("2D MAP","CHECK UPDATES","ALL APPS")
+        for (i in labels.indices) {
+            val b=android.widget.Button(this).apply {
+                text=labels[i];textSize=11f
+                setOnClickListener {
+                    when(i) {
+                        0 -> {in3D=false;setContentView(map)}
+                        1 -> checkUpdates(true)
+                        else -> {in3D=false;setContentView(map);map.showAppDrawer()}
+                    }
+                }
+            }
+            bottom.addView(b,android.widget.LinearLayout.LayoutParams(0,-2,1f))
+        }
+        shell.addView(bottom,android.widget.FrameLayout.LayoutParams(-1,-2,android.view.Gravity.BOTTOM))
+        setContentView(shell)
+        world.onResume()
+    }
+
+    private fun checkUpdates(manual: Boolean) {
+        Thread {
+            try {
+                val conn = (java.net.URL("https://api.github.com/repos/Fizghin/ATLAS-Launcher/releases/tags/atlas-preview").openConnection() as java.net.HttpURLConnection)
+                conn.connectTimeout=7000;conn.readTimeout=7000
+                conn.setRequestProperty("Accept","application/vnd.github+json")
+                val json=org.json.JSONObject(conn.inputStream.bufferedReader().use{it.readText()})
+                conn.disconnect()
+                val assets=json.optJSONArray("assets")
+                var apkUrl=""
+                if(assets!=null)for(i in 0 until assets.length()){
+                    val a=assets.getJSONObject(i)
+                    if(a.optString("name").endsWith(".apk"))apkUrl=a.optString("browser_download_url")
+                }
+                val published=json.optString("published_at")
+                val seen=prefs.getString("last_seen_release","") ?: ""
+                val url=apkUrl
+                runOnUiThread {
+                    if(url.isNotBlank() && (manual || published!=seen)) {
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("ATLAS update available")
+                            .setMessage("A GitHub preview APK is available. Android will require your approval to install it. Existing preview builds may have different signing certificates.")
+                            .setPositiveButton("VIEW DOWNLOAD") { _,_ ->
+                                startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,android.net.Uri.parse(url)))
+                                prefs.edit().putString("last_seen_release",published).apply()
+                            }.setNegativeButton("LATER",null).show()
+                    } else if(manual) android.widget.Toast.makeText(this,"No newer release found",android.widget.Toast.LENGTH_LONG).show()
+                }
+            } catch(e:Exception) {
+                if(manual)runOnUiThread { android.widget.Toast.makeText(this,"Could not check GitHub releases",android.widget.Toast.LENGTH_LONG).show() }
+            }
+        }.start()
+    }
 
     inner class PirateMap : View(this@MainActivity) {
         var selected = -1
@@ -250,7 +329,9 @@ class MainActivity : Activity() {
             }
             invalidate()
         }
-        fun goBack(){select(-1)}
+        fun goBack(){show3D()}
+        fun openDistrict(i:Int){select(i)}
+        fun showAppDrawer(){showAllApps()}
         override fun onTouchEvent(e:MotionEvent):Boolean {
             val x=e.x;val y=e.y;val h=height.toFloat();val w=width.toFloat()
             when(e.actionMasked) {
