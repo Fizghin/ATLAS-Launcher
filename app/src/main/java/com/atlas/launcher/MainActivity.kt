@@ -141,12 +141,12 @@ class MainActivity : Activity() {
                 val json=org.json.JSONObject(conn.inputStream.bufferedReader().use{it.readText()})
                 conn.disconnect()
                 val assets=json.optJSONArray("assets")
-                var apkUrl=""
+                var apkUrl=""\n                var releaseStamp=""
                 if(assets!=null)for(i in 0 until assets.length()){
                     val a=assets.getJSONObject(i)
-                    if(a.optString("name").endsWith(".apk"))apkUrl=a.optString("browser_download_url")
+                    if(a.optString("name").endsWith(".apk")) {\n                        apkUrl=a.optString("browser_download_url")\n                        releaseStamp=a.optString("updated_at")\n                    }
                 }
-                val published=json.optString("published_at")
+                val published=releaseStamp.ifBlank { json.optString("published_at") }
                 val seen=prefs.getString("last_seen_release","") ?: ""
                 val url=apkUrl
                 runOnUiThread {
