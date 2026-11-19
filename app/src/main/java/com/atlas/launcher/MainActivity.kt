@@ -17,7 +17,7 @@ class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("atlas", MODE_PRIVATE) }
     private val parchment = Color.rgb(235, 214, 168)
     private val ink = Color.rgb(60, 42, 27)
-    private val sea = Color.rgb(105, 148, 148)
+    private val sea = Color.rgb(57, 108, 119)
     private var audio: SeaAudio? = null
     private val districts = arrayOf("TAVERN", "SHIPYARD", "VAULT", "OBSERVATORY")
     private val descriptions = arrayOf("SOCIAL & MESSAGES", "TRAVEL & MOTORS", "FILES & STUDY", "TOOLS & WEATHER")
@@ -97,6 +97,10 @@ class MainActivity : Activity() {
         private var downY = 0f
         private var moved = false
         private var lastDistance = 0f
+        private val startedAt = android.os.SystemClock.uptimeMillis()
+        private var frameTime = startedAt
+        private val titlePaint = Paint(3)
+        private val gold = 0xFFCEAE70.toInt()
         private val paint = Paint(3)
         private val islands = arrayOf(.25f to .29f, .74f to .30f, .28f to .69f, .73f to .71f)
         private val mapColors = intArrayOf(0xFFBDA878.toInt(), 0xFFC5AD7D.toInt(), 0xFFB2A278.toInt(), 0xFFB7A17A.toInt())
@@ -106,7 +110,7 @@ class MainActivity : Activity() {
         init { handler.postDelayed(tick, 15000) }
         private fun text(c: Canvas, s: String, x: Float, y: Float, size: Float, color: Int = ink, bold: Boolean = true) {
             paint.color = color; paint.style = Paint.Style.FILL
-            paint.typeface = Typeface.create("serif", if (bold) Typeface.BOLD else Typeface.NORMAL)
+            paint.typeface = Typeface.create(if (bold) "serif" else "serif", if (bold) Typeface.BOLD_ITALIC else Typeface.ITALIC)
             paint.textSize = size; paint.textAlign = Paint.Align.CENTER
             c.drawText(s, x, y, paint)
         }
@@ -118,7 +122,7 @@ class MainActivity : Activity() {
             val p=Path()
             for(i in 0..48) {
                 val a=i*PI*2/48
-                val wobble=1f + .13f*sin(i*2.3+seed*3.0).toFloat()+.06f*cos(i*4.7+seed).toFloat()
+                val wobble=1f + .055f*sin(i*.78+seed*3.0).toFloat()+.038f*cos(i*1.47+seed).toFloat()
                 val x=cx+cos(a).toFloat()*r*wobble
                 val y=cy+sin(a).toFloat()*r*.76f*wobble
                 if(i==0)p.moveTo(x,y) else p.lineTo(x,y)
@@ -127,6 +131,10 @@ class MainActivity : Activity() {
             paint.color=0xFFE4C994.toInt(); paint.style=Paint.Style.STROKE;paint.strokeWidth=13f
             c.drawPath(p,paint)
             paint.color=mapColors[seed];paint.style=Paint.Style.FILL;c.drawPath(p,paint)
+            paint.color=0x33412B1B;paint.style=Paint.Style.STROKE;paint.strokeWidth=1.4f
+            c.drawCircle(cx,cy,r*.57f,paint)
+            c.drawCircle(cx,cy,r*.37f,paint)
+            paint.style=Paint.Style.FILL
             paint.color=ink;paint.style=Paint.Style.STROKE;paint.strokeWidth=2f;c.drawPath(p,paint);paint.style=Paint.Style.FILL
             val random=java.util.Random(seed.toLong()+18)
             repeat(16) {
@@ -148,22 +156,41 @@ class MainActivity : Activity() {
             super.onDraw(c)
             val w=width.toFloat();val h=height.toFloat()
             c.drawColor(parchment)
-            val header=74f*resources.displayMetrics.density
-            val bottom=78f*resources.displayMetrics.density
+            val header=96f*resources.displayMetrics.density
+            val bottom=94f*resources.displayMetrics.density
             val mapTop=header;val mapH=h-header-bottom
             paint.color=sea;c.drawRect(0f,mapTop,w,h-bottom,paint)
+            // Layered water contours and gentle wave movement
+            val seconds=(android.os.SystemClock.uptimeMillis()-startedAt)/1000f
+            paint.style=Paint.Style.STROKE;paint.strokeWidth=1.4f
+            for(j in 0..25) {
+                val yy=mapTop+j*mapH/24f
+                val wave=Path()
+                for(k in 0..30) {
+                    val xx=k*w/30f
+                    val yWave=yy+6f*sin(xx*.025f+seconds*.25f+j*.4f)
+                    if(k==0)wave.moveTo(xx,yWave) else wave.lineTo(xx,yWave)
+                }
+                paint.color=if(j%2==0)0x337DE0D4 else 0x2243A6A9
+                c.drawPath(wave,paint)
+            }
+            paint.style=Paint.Style.FILL
             c.save();c.clipRect(0f,mapTop,w,h-bottom)
             val centerX=w/2;val centerY=mapTop+mapH/2
-            zoom+=(targetZoom-zoom)*.19f
+            zoom+=(targetZoom-zoom)*.13f
             if(abs(targetZoom-zoom)>.003f) postInvalidateDelayed(16)
             c.translate(centerX+panX,centerY+panY)
             c.scale(zoom,zoom)
             c.translate(-centerX,-centerY)
-            val radius=min(w,mapH)*.205f
+            val radius=min(w,mapH)*.19f
             for(i in 0..3) {
                 val x=w*islands[i].first;val y=mapTop+mapH*islands[i].second
                 island(c,x,y,radius,i)
-                building(c,x,y-16f,1.25f,i)
+                building(c,x,y-16f,1.8f,i)
+                // Landmarks: lookout, market and docks
+                building(c,x-radius*.46f,y+radius*.12f,.65f,i+2)
+                building(c,x+radius*.46f,y-radius*.15f,.8f,i+3)
+                line(c,x-radius*.68f,y+radius*.46f,x+radius*.63f,y+radius*.41f,0xFF725639.toInt(),2.5f)
                 text(c,names[i],x,y+radius*.53f, min(w/20f,21f),ink)
             }
             // Dashed sailing routes
@@ -189,16 +216,27 @@ class MainActivity : Activity() {
             // Frame and map legend
             paint.color=ink;paint.style=Paint.Style.STROKE;paint.strokeWidth=3f
             c.drawRect(7f,mapTop+7f,w-7f,h-bottom-7f,paint);paint.style=Paint.Style.FILL
-            text(c,"A T L A S",w/2,header*.48f,32f)
-            text(c,if(selected<0)"THE LOST ARCHIPELAGO" else descriptions[selected],w/2,header*.82f,12f)
+            text(c,"A T L A S",w/2,header*.39f,40f)
+            text(c,"✦  THE CARTOGRAPHER’S REALM  ✦",w/2,header*.60f,11f)
+            line(c,w*.13f,header*.66f,w*.87f,header*.66f,gold,2f)
+            text(c,if(selected<0)"THE LOST ARCHIPELAGO" else descriptions[selected],w/2,header*.83f,14f)
             text(c,if(selected<0)"TAP AN ISLAND  •  PINCH TO EXPLORE" else "TAP A BUILDING TO OPEN AN APP",w/2,h-bottom+24f,12f)
             val battery=getSystemService(BATTERY_SERVICE) as android.os.BatteryManager
             val pct=battery.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
             val now=java.text.SimpleDateFormat("HH:mm",java.util.Locale.getDefault()).format(java.util.Date())
-            text(c,"CLOCK TOWER  $now     LIGHTHOUSE  $pct%",w/2,h-bottom+45f,12f)
-            text(c,if(prefs.getBoolean("music",false))"♫ MUSIC ON" else "♫ MUSIC OFF",w*.2f,h-12f,12f)
-            text(c,if(selected>=0)"✎ EDIT BUILDINGS" else "☷ ALL APPS",w*.72f,h-12f,12f)
+            text(c,"CLOCK TOWER  $now     LIGHTHOUSE  $pct%",w/2,h-bottom+49f,14f)
+            text(c,"✦  NAVIGATE THE SEVEN SEAS  ✦",w/2,h-bottom+69f,11f)
+            text(c,if(prefs.getBoolean("music",false))"♫ MUSIC ON" else "♫ MUSIC OFF",w*.2f,h-20f,14f)
+            text(c,if(selected>=0)"✎ EDIT BUILDINGS" else "☷ ALL APPS",w*.72f,h-20f,14f)
             if(selected>=0)text(c,"‹ BACK",w*.13f,header*.83f,14f)
+            // Compass rose overlay
+            val compassX=w-45f;val compassY=mapTop+53f
+            paint.color=0xAAEED9A6.toInt();c.drawCircle(compassX,compassY,33f,paint)
+            paint.color=ink;paint.style=Paint.Style.STROKE;paint.strokeWidth=2f;c.drawCircle(compassX,compassY,33f,paint);paint.style=Paint.Style.FILL
+            line(c,compassX,compassY-25f,compassX,compassY+25f)
+            line(c,compassX-25f,compassY,compassX+25f,compassY)
+            text(c,"N",compassX,compassY-11f,12f)
+            if(android.os.SystemClock.uptimeMillis()-frameTime>45L){frameTime=android.os.SystemClock.uptimeMillis();postInvalidateDelayed(80)}
         }
         private fun select(i:Int) {
             selected=i
@@ -206,8 +244,8 @@ class MainActivity : Activity() {
             else {
                 targetZoom=2.55f
                 panX=(width/2-width*islands[i].first)*targetZoom
-                val header=74f*resources.displayMetrics.density
-                val mapH=height-header-78f*resources.displayMetrics.density
+                val header=96f*resources.displayMetrics.density
+                val mapH=height-header-94f*resources.displayMetrics.density
                 panY=(header+mapH/2-(header+mapH*islands[i].second))*targetZoom
             }
             invalidate()
@@ -235,12 +273,12 @@ class MainActivity : Activity() {
                 }
                 MotionEvent.ACTION_UP -> {
                     if(!moved) {
-                        if(y>h-58f*resources.displayMetrics.density) {
+                        if(y>h-68f*resources.displayMetrics.density) {
                             if(x<w*.43f)toggleMusic() else if(selected>=0)chooseApps(selected) else showAllApps()
-                        } else if(selected>=0 && y<74f*resources.displayMetrics.density && x<w*.3f)goBack()
-                        else if(y>74f*resources.displayMetrics.density && y<h-78f*resources.displayMetrics.density) {
-                            val header=74f*resources.displayMetrics.density
-                            val mapH=h-header-78f*resources.displayMetrics.density
+                        } else if(selected>=0 && y<96f*resources.displayMetrics.density && x<w*.3f)goBack()
+                        else if(y>96f*resources.displayMetrics.density && y<h-94f*resources.displayMetrics.density) {
+                            val header=96f*resources.displayMetrics.density
+                            val mapH=h-header-94f*resources.displayMetrics.density
                             val cx=w/2;val cy=header+mapH/2
                             val ux=(x-cx-panX)/zoom+cx
                             val uy=(y-cy-panY)/zoom+cy
@@ -250,7 +288,7 @@ class MainActivity : Activity() {
                                 if(dist<min(w,mapH)*.25f)select(index)
                             } else {
                                 val ix=selected;val centerIslandX=w*islands[ix].first;val centerIslandY=header+mapH*islands[ix].second
-                                val radius=min(w,mapH)*.205f
+                                val radius=min(w,mapH)*.19f
                                 val col=round((ux-centerIslandX)/(radius*.68f)).toInt()+1
                                 val row=round((uy-(centerIslandY-radius*.34f))/(radius*.29f)).toInt()
                                 if(col in 0..2 && row in 0..5) {
