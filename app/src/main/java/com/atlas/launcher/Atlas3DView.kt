@@ -52,7 +52,7 @@ class Atlas3DView(context: Context, private val onIsland: (Int) -> Unit) : GLSur
         return true
     }
 
-    private class WorldRenderer : Renderer {
+    private class WorldRenderer : GLSurfaceView.Renderer {
         @Volatile var distance=23f
         @Volatile var yaw=.15f
         private var program=0
