@@ -18,7 +18,7 @@ var clock_label: Label
 var settings_panel: PanelContainer
 var drag_start := Vector2.ZERO
 var dragging := false
-var sea_material: StandardMaterial3D
+var sea_material: ShaderMaterial
 var elapsed := 0.0
 
 func _ready() -> void:
@@ -76,7 +76,8 @@ func _setup_environment() -> void:
     plane.size = Vector2(120,120)
     sea.mesh = plane
     sea.position.y = -1.35
-    sea_material = _material(Color("#2b8492"),0.15,0.24)
+    sea_material = ShaderMaterial.new()
+    sea_material.shader = load("res://shaders/ocean.gdshader")
     sea.material_override = sea_material
     add_child(sea)
 
@@ -269,7 +270,7 @@ func _setup_ui() -> void:
 
 func _process(delta: float) -> void:
     elapsed += delta
-    if sea_material: sea_material.albedo_color = Color("#2b8492").lerp(Color("#378e9a"),(sin(elapsed*.45)+1)*.5)
+    # Ocean animation is performed on the GPU by the shader.
     if clock_label: clock_label.text = Time.get_time_string_from_system().substr(0,5)
 
 func _fly_to(index: int) -> void:
@@ -282,7 +283,7 @@ func _fly_to(index: int) -> void:
         target_pos = CENTERS[index]+Vector3(0,13,16)
         target_look = CENTERS[index]
         status.text = DISTRICTS[index]
-    if camera_tween: camera_tween.kill()
+    if camera_tween and camera_tween.is_running(): camera_tween.kill()
     camera_tween = create_tween().set_parallel(true)
     camera_tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
     camera_tween.tween_property(camera,"position",target_pos,1.6)
