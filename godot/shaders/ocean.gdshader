@@ -13,13 +13,13 @@ void vertex() {
     world_position = (MODEL_MATRIX * vec4(VERTEX,1.0)).xyz;
 }
 void fragment() {
-    float wave = sin(world_position.x * 0.72 + TIME * 0.8) *
-                 cos(world_position.z * 0.57 - TIME * 0.6);
+    float wave = sin(world_position.x * 0.17 + TIME * 0.3) *
+                 cos(world_position.z * 0.23 - TIME * 0.2);
     float current = smoothstep(-0.4,0.75,wave);
-    vec3 water = mix(deep_color.rgb, shallow_color.rgb, current * 0.55);
+    vec3 water = mix(deep_color.rgb, shallow_color.rgb, current * 0.35);
     float foam = smoothstep(0.82,0.99, sin(world_position.x * 1.2 + world_position.z * 0.7 + TIME * 0.5));
-    ALBEDO = mix(water,foam_color.rgb,foam*0.09);
-    ROUGHNESS = 0.19;
-    METALLIC = 0.15;
-    SPECULAR = 0.75;
+    ALBEDO = mix(water,foam_color.rgb,foam*0.018);
+    ROUGHNESS = 0.4;
+    METALLIC = 0.0;
+    SPECULAR = 0.18;
 }

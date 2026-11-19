@@ -1,0 +1,11 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["godot/scripts", "atlas-plugin/src", "app/src"],
+  "locale": "en",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Form", "Select/Listbox", "Scrollbar", "Toast", "CRUD"],
+  "ownership": { "Select/Listbox": "authored" },
+  "requiredCommands": [],
+  "commands": {},
+  "evidence": { "crudFullFlow": "godot/tests/test_layout.gd", "failurePaths": "docs/TESTING.md" }
+}

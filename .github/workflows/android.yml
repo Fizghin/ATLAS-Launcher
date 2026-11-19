@@ -1,8 +1,12 @@
-name: Build Android APK
+name: Godot Android launcher
 on:
   push:
-    branches: [main]
+    branches: [main, 'rebuild/**']
+    tags: ['v*']
+  pull_request:
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -13,34 +17,78 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: "8.9"
-      - name: Accept Android SDK licenses
+          gradle-version: '8.9'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android platform and matching Godot editor
         run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
-      - name: Install Android platform
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          curl -fL -o /tmp/godot.zip https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          sudo install /tmp/godot/Godot_v4.4.1-stable_linux.x86_64 /usr/local/bin/godot
+      - name: Import, test, and export real Godot world
         run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"
-      - name: Build debug APK
-        run: gradle --no-daemon --refresh-dependencies :app:assembleDebug --stacktrace --console=plain
-      - uses: actions/upload-artifact@v4
+          godot --headless --path godot --editor --import --quit 2>&1 | tee /tmp/import.log
+          ! grep -E 'SCRIPT ERROR|Parse Error|Failed to load script' /tmp/import.log
+          godot --headless --path godot --script tests/test_layout.gd 2>&1 | tee /tmp/layout.log
+          grep -q ATLAS_TEST_PASS /tmp/layout.log
+          mkdir -p app/src/main/assets
+          godot --headless --path godot --export-pack Pack ../app/src/main/assets/atlas.pck --quit
+      - name: Build plugin, development APK, and lint
+        run: gradle --no-daemon :atlas-plugin:assembleDebug :app:assembleDebug :app:lintDebug --console=plain
+      - name: Validate APK content and signature
+        run: |
+          python tools/validate_apk.py app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk
+      - name: Android HOME and building smoke test
+        uses: reactivecircus/android-emulator-runner@v2
         with:
-          name: ATLAS-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          api-level: 35
+          arch: x86_64
+          target: default
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: python tools/android_smoke.py app/build/outputs/apk/debug/app-debug.apk --output smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ATLAS-development-and-test-evidence
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/reports/lint-results-debug.*
+            smoke/
           if-no-files-found: error
-
-      - name: Publish APK to GitHub Releases
-        if: success() && github.ref == 'refs/heads/main'
+      - name: Build persistent signed release on version tags only
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          KEY_BASE64: ${{ secrets.ATLAS_KEYSTORE_BASE64 }}
+          ATLAS_KEYSTORE: ${{ runner.temp }}/atlas-release.jks
+          ATLAS_STORE_PASSWORD: ${{ secrets.ATLAS_STORE_PASSWORD }}
+          ATLAS_KEY_ALIAS: ${{ secrets.ATLAS_KEY_ALIAS }}
+          ATLAS_KEY_PASSWORD: ${{ secrets.ATLAS_KEY_PASSWORD }}
+        run: |
+          test -n "$KEY_BASE64" && test -n "$ATLAS_STORE_PASSWORD" && test -n "$ATLAS_KEY_ALIAS" && test -n "$ATLAS_KEY_PASSWORD"
+          printf '%s' "$KEY_BASE64" | base64 --decode > "$ATLAS_KEYSTORE"
+          chmod 600 "$ATLAS_KEYSTORE"
+          trap 'rm -f "$ATLAS_KEYSTORE"' EXIT
+          gradle --no-daemon :app:assembleRelease :app:lintRelease
+          python tools/validate_apk.py app/build/outputs/apk/release/app-release.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
+          python tools/make_update_manifest.py app/build/outputs/apk/release/app-release.apk "$ANDROID_HOME/build-tools/35.0.0/aapt" "$GITHUB_REF_NAME"
+          VERSION="${GITHUB_REF_NAME#v}"
+          cp app/build/outputs/apk/release/app-release.apk "ATLAS-$VERSION.apk"
+      - name: Smoke-test signed APK before publishing
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: default
+          script: python tools/android_smoke.py app/build/outputs/apk/release/app-release.apk --output release-smoke
+      - name: Publish verified versioned release
+        if: success() && startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          APK=$(find app/build/outputs/apk/debug -maxdepth 1 -name '*.apk' -print -quit)
-          test -n "$APK"
-          cp "$APK" ATLAS-preview-debug.apk
-          if gh release view atlas-preview >/dev/null 2>&1; then
-            gh release upload atlas-preview ATLAS-preview-debug.apk --clobber
-          else
-            gh release create atlas-preview ATLAS-preview-debug.apk --title "ATLAS Preview (unstable)" --notes "Experimental Android launcher. Download the debug APK. This preview is not a finished 3D game world." --prerelease --target "$GITHUB_SHA"
-          fi
+        run: gh release create "$GITHUB_REF_NAME" "ATLAS-${GITHUB_REF_NAME#v}.apk" atlas-update.json --verify-tag --generate-notes

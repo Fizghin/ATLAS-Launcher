@@ -1,0 +1,10 @@
+.gradle/
+**/build/
+local.properties
+godot/.godot/
+app/src/main/assets/*.pck
+*.apk
+*.jks
+*.keystore
+*.log
+premium-audit.json
