@@ -1,0 +1,22 @@
+; Engine configuration file.
+; ATLAS 3D world project. Import in Godot 4.3+.
+config_version=5
+
+[application]
+config/name="ATLAS - Pirate Archipelago"
+run/main_scene="res://scenes/archipelago.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+
+[rendering]
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/default_filters/use_nearest_mipmap_filter=false
+environment/defaults/default_clear_color=Color(0.09, 0.29, 0.35, 1)
+
+[display]
+window/size/viewport_width=1080
+window/size/viewport_height=1920
+window/stretch/mode="canvas_items"
+
+[input]
+ui_cancel={"deadzone":0.5,"events":[Object(InputEventKey,"physical_keycode":4194305)]}
